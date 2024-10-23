@@ -5,8 +5,12 @@ using FuzzySharp;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using Microsoft.ML.Transforms;
+using PdfImagesExtractToDiscord.Interface;
+using PdfImagesExtractToDiscord.Model;
 using Tesseract;
 using ImageFormat = System.Drawing.Imaging.ImageFormat;
+
+namespace PdfImagesExtractToDiscord.Extractor;
 
 public class ImageTextExtractor : IImageTextExtractor
 {

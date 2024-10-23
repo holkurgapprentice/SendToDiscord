@@ -1,4 +1,4 @@
-namespace PdfImagesExtractToDiscord;
+namespace PdfImagesExtractToDiscord.Interface;
 
 public interface IPngProcessor
 {

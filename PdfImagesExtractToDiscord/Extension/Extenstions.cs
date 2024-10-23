@@ -1,4 +1,4 @@
-﻿namespace PdfImagesExtractToDiscord;
+﻿namespace PdfImagesExtractToDiscord.Extension;
 
 public static class Extenstions
 {

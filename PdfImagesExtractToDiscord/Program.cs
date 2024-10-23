@@ -1,7 +1,14 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using PdfImagesExtractToDiscord;
+using PdfImagesExtractToDiscord.Extractor;
+using PdfImagesExtractToDiscord.FileHandler;
+using PdfImagesExtractToDiscord.Interface;
+using PdfImagesExtractToDiscord.Model;
+using PdfImagesExtractToDiscord.Processor;
+using PdfImagesExtractToDiscord.Sender;
+
+namespace PdfImagesExtractToDiscord;
 
 internal class Program
 {

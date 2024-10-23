@@ -1,3 +1,5 @@
+namespace PdfImagesExtractToDiscord.Model;
+
 public class ImageDetailsModel
 {
 	public string SymbolName { get; set; }

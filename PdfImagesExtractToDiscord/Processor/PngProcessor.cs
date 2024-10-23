@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
+using PdfImagesExtractToDiscord.Interface;
 
-namespace PdfImagesExtractToDiscord;
+namespace PdfImagesExtractToDiscord.Processor;
 
 public class PngProcessor : IPngProcessor
 {

@@ -1,10 +1,11 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using Microsoft.Extensions.Configuration;
+using PdfImagesExtractToDiscord.Interface;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
 
-namespace PdfImagesExtractToDiscord;
+namespace PdfImagesExtractToDiscord.Processor;
 
 internal class PdfProcessor : IPdfProcessor
 {

@@ -1,3 +1,7 @@
+using PdfImagesExtractToDiscord.Model;
+
+namespace PdfImagesExtractToDiscord.Interface;
+
 public interface IFileSystem
 {
 	string[] GetFiles(string path, string fileNamePattern);

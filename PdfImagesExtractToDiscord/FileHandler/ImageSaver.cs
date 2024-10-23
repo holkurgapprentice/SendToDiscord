@@ -1,4 +1,7 @@
 using System.Drawing;
+using PdfImagesExtractToDiscord.Interface;
+
+namespace PdfImagesExtractToDiscord.FileHandler;
 
 public class ImageSaver : IImageSaver
 {

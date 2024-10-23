@@ -1,3 +1,5 @@
+namespace PdfImagesExtractToDiscord.Model;
+
 public class FileFeedToProcessModel
 {
 	public List<string> Pdfs { get; set; }

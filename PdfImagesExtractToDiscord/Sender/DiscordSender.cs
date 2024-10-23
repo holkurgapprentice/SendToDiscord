@@ -1,7 +1,11 @@
 ﻿using Discord;
 using Discord.Webhook;
 using Microsoft.Extensions.Configuration;
-using PdfImagesExtractToDiscord;
+using PdfImagesExtractToDiscord.Extension;
+using PdfImagesExtractToDiscord.Interface;
+using PdfImagesExtractToDiscord.Model;
+
+namespace PdfImagesExtractToDiscord.Sender;
 
 public class DiscordSender : IDiscordSender
 {
@@ -66,7 +70,7 @@ public class DiscordSender : IDiscordSender
 	private static string? GetMessagePostSummary(FileFeedToProcessModel feedToProcessModel)
 	{
 		return $"{Path.GetFileName(feedToProcessModel.Pdfs.EmptyWhenNull().FirstOrDefault())}{Environment.NewLine}" +
-		       $"Currencies: {feedToProcessModel.ManuallyProvidedPngsList.EmptyWhenNull().Count()}{Environment.NewLine}" +
+		       $"Currencies: {feedToProcessModel.PdfsRelatedPngsList.EmptyWhenNull().Count()}{Environment.NewLine}" +
 		       $"Commodities :{feedToProcessModel.ManuallyProvidedPngsList.EmptyWhenNull().Count()}{Environment.NewLine}" +
 		       $"Pdfs: {feedToProcessModel.Pdfs.EmptyWhenNull().Count()}{Environment.NewLine}";
 	}

@@ -1,4 +1,8 @@
-using PdfImagesExtractToDiscord;
+using PdfImagesExtractToDiscord.Extension;
+using PdfImagesExtractToDiscord.Interface;
+using PdfImagesExtractToDiscord.Model;
+
+namespace PdfImagesExtractToDiscord.FileHandler;
 
 internal class FileSystem : IFileSystem
 {
@@ -36,7 +40,7 @@ internal class FileSystem : IFileSystem
 	{
 		if (fileFeedToProcessModel.ProcessedPdfsRelatedPngsList.EmptyWhenNull().Count() ==
 		    fileFeedToProcessModel.PdfsRelatedPngsList.EmptyWhenNull().Count())
-		
+
 			CleanOnSuccess(fileFeedToProcessModel);
 		else
 			CleanOnFail(fileFeedToProcessModel);
@@ -44,14 +48,13 @@ internal class FileSystem : IFileSystem
 
 	private static void CleanOnSuccess(FileFeedToProcessModel fileFeedToProcessModel)
 	{
-		Console.WriteLine($"Cleaning all files");
+		Console.WriteLine("Cleaning all files");
 
 		var allFiles = fileFeedToProcessModel.Pdfs.EmptyWhenNull().Concat(
 			fileFeedToProcessModel.ProcessedPdfsRelatedPngsList.EmptyWhenNull()).Concat(
 			fileFeedToProcessModel.ManuallyProvidedPngsList.EmptyWhenNull()).ToList();
 
 		foreach (var filePath in allFiles)
-		{
 			try
 			{
 				Console.WriteLine($"Cleaning file {filePath}");
@@ -61,7 +64,6 @@ internal class FileSystem : IFileSystem
 			{
 				Console.WriteLine($"Failed to delete file {filePath}: {e.Message}");
 			}
-		}
 	}
 
 	private static void CleanOnFail(FileFeedToProcessModel fileFeedToProcessModel)
