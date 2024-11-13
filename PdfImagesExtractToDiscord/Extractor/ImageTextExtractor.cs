@@ -48,16 +48,18 @@ public class ImageTextExtractor : IImageTextExtractor
 							var text = page.GetText().Trim();
 							Console.WriteLine($"OCR Text: {text}"); // For debugging
 
-							var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-							if (lines.Length < 2)
+							var nonEmptyTrimmedLongLines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+								.Select(line => line?.Trim())
+								.Where(line => !string.IsNullOrWhiteSpace(line) && line.Length > 10).ToList();
+							if (nonEmptyTrimmedLongLines.Count < 2)
 								return new ImageDetailsModel
 									{ SymbolName = "Unknown", Interval = "Unknown", DateString = "Unknown" };
 
 							// Extract the date from the first line
-							var dateString = ExtractDateFromText(lines[0]);
-							var currencyPairLine = lines[1].Trim();
+							var dateString = ExtractDateFromText(nonEmptyTrimmedLongLines.FirstOrDefault());
+							var currencyPairLine = nonEmptyTrimmedLongLines.LastOrDefault();
 
-							// Extract currency pair using ML.NET
+							// Extract currency pair using ML.NET / Fuzzy
 							Console.WriteLine($"Currency pair line: {currencyPairLine}");
 							var symbolName = ExtractCurrencyPair(currencyPairLine);
 							Console.WriteLine($"Extracted symbol name: {symbolName}");
@@ -131,9 +133,6 @@ public class ImageTextExtractor : IImageTextExtractor
 
 	private string ExtractCurrencyPair(string text)
 	{
-		// todo test
-		//text = "Australian Dollar US Dollar 2D FXCM";
-
 		if (string.IsNullOrWhiteSpace(text))
 		{
 			Console.WriteLine("Input text is empty or null");
@@ -146,12 +145,16 @@ public class ImageTextExtractor : IImageTextExtractor
 		var words = text.Split(' ');
 		for (var i = 0; i < words.Length - 1; i += 2)
 		{
-			var word = $"{words[i]} {words[i + 1]}";
-			var prediction = predictionEngine.Predict(new CurrencyData { Text = word });
+			var wordPair = $"{words[i]} {words[i + 1]}";
+			var prediction = predictionEngine.Predict(new CurrencyData { Text = wordPair });
 			if (!string.IsNullOrEmpty(prediction.PredictedLabel)) currencies.Add(prediction.PredictedLabel);
 		}
 
-		if (currencies.Count >= 2) return $"{currencies[0]}/{currencies[1]}";
+		if (currencies.Count >= 2)
+		{
+			Console.WriteLine("Result brought by ML.");
+			return $"{currencies[0]}/{currencies[1]}";
+		}
 
 		// Fallback
 		for (var i = 0; i < words.Length - 1; i++)
@@ -165,7 +168,11 @@ public class ImageTextExtractor : IImageTextExtractor
 			}
 		}
 
-		if (currencies.Count >= 2) return $"{currencies[0]}/{currencies[1]}";
+		if (currencies.Count >= 2)
+		{
+			Console.WriteLine("Result brought by Fuzzy.");
+			return $"{currencies[0]}/{currencies[1]}";
+		}
 
 		return "Unknown";
 	}
@@ -208,6 +215,6 @@ public class ImageTextExtractor : IImageTextExtractor
 
 	private class CurrencyPrediction
 	{
-		[ColumnName("PredictedLabel")] public string PredictedLabel { get; }
+		[ColumnName("PredictedLabel")] public string PredictedLabel { get; set; }
 	}
 }

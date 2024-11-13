@@ -36,7 +36,9 @@ internal class Program
 			.ConfigureAppConfiguration((_, config) =>
 			{
 				config.AddJsonFile("appsettings.json", false, true);
+#if DEBUG
 				config.AddUserSecrets<Program>();
+#endif
 			})
 			.ConfigureServices((hostContext, services) =>
 			{
