@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using PdfImagesExtractToDiscord.Extension;
 using PdfImagesExtractToDiscord.Interface;
 using PdfImagesExtractToDiscord.Model;
@@ -12,15 +13,17 @@ public class DiscordSender : IDiscordSender
 	private DiscordSocketClient _client;
 	private readonly IConfiguration _configuration;
 	private readonly IFileSystem _fileSystem;
+	private readonly ILogger<DiscordSender> _logger;
 	private readonly IImageTextExtractor _imageTextExtractor;
 	private IEnumerable<IMessage>? _lastMessages;
 	private IMessageChannel _mainChannel;
 
-	public DiscordSender(IConfiguration configuration, IImageTextExtractor imageTextExtractor, IFileSystem fileSystem)
+	public DiscordSender(IConfiguration configuration, IImageTextExtractor imageTextExtractor, IFileSystem fileSystem, ILogger<DiscordSender> logger)
 	{
 		_configuration = configuration;
 		_imageTextExtractor = imageTextExtractor;
 		_fileSystem = fileSystem;
+		_logger = logger;
 	}
 
 	private async Task InitHistoryOnReady()
@@ -37,7 +40,7 @@ public class DiscordSender : IDiscordSender
 		}
 		catch (Exception e)
 		{
-			Console.WriteLine($"Possibly insufficient privileges error, {e}");
+			_logger.LogInformation($"Possibly insufficient privileges error, {e}");
 			throw;
 		}
 	}
@@ -58,7 +61,7 @@ public class DiscordSender : IDiscordSender
 		foreach (var imagePath in feedToProcessModel.ManuallyProvidedPngsList)
 			await PostSingleImageAsync(imagePath, false);
 
-		Console.WriteLine($"Posted {result.Count} images to Discord.");
+		_logger.LogInformation($"Posted {result.Count} images to Discord.");
 		return result;
 	}
 
@@ -100,12 +103,12 @@ public class DiscordSender : IDiscordSender
 			foreach (var attachment in attachments)
 				attachment.Stream.Dispose(); // Ensure streams are disposed
 
-			Console.WriteLine("Posted multiple files with");
+			_logger.LogInformation("Posted multiple files with");
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"Error posting multiple files: {ex.Message}");
-			Console.WriteLine($"Exception details: {ex}");
+			_logger.LogInformation($"Error posting multiple files: {ex.Message}");
+			_logger.LogInformation($"Exception details: {ex}");
 		}
 	}
 
@@ -141,21 +144,21 @@ public class DiscordSender : IDiscordSender
 				if (currentMessage != null)
 					_lastMessages = _lastMessages.Append(currentMessage);
 
-				Console.WriteLine($"Posted image: {imagePath}, replied: {(lastMessage == null ? "no" : "yes" )}");
+				_logger.LogInformation($"Posted image: {imagePath}, replied: {(lastMessage == null ? "no" : "yes" )}");
 			}
 
 			if (isCleanAfterSuccess)
 			{
 				_fileSystem.Delete(imagePath);
-				Console.WriteLine($"Deleted image: {imagePath}");
+				_logger.LogInformation($"Deleted image: {imagePath}");
 			}
 
 			return true;
 		}
 		catch (Exception ex)
 		{
-			Console.WriteLine($"Error posting image {imagePath}, isClean: {isCleanAfterSuccess}, ex mes: {ex.Message}");
-			Console.WriteLine($"Exception details: {ex}");
+			_logger.LogInformation($"Error posting image {imagePath}, isClean: {isCleanAfterSuccess}, ex mes: {ex.Message}");
+			_logger.LogInformation($"Exception details: {ex}");
 			return false;
 		}
 	}

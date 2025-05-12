@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using PdfImagesExtractToDiscord.Interface;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -10,28 +11,30 @@ namespace PdfImagesExtractToDiscord.Processor;
 internal class PdfProcessor : IPdfProcessor
 {
 	private readonly IConfiguration _configuration;
+	private readonly ILogger<PdfProcessor> _logger;
 	private readonly IFileSystem _fileSystem;
 	private readonly IImageSaver _imageSaver;
 	private readonly string _searchPattern;
 
 	public PdfProcessor(IFileSystem fileSystem, IImageSaver imageSaver, IConfiguration
-		configuration)
+		configuration, ILogger<PdfProcessor> logger)
 	{
 		_fileSystem = fileSystem;
 		_imageSaver = imageSaver;
 		_configuration = configuration;
+		_logger = logger;
 		_searchPattern = _configuration["Files:PdfMask"];
 	}
 
 	public List<string> GetPdfsInDirectory(string directory)
 	{
-		Console.WriteLine($"GetPdfsInDirectory - Current directory: {directory}");
+		_logger.LogInformation($"GetPdfsInDirectory - Current directory: {directory}");
 
 		var pdfFiles = _fileSystem.GetFiles(directory, _searchPattern);
 
 		if (pdfFiles.Length == 0)
 		{
-			Console.WriteLine(
+			_logger.LogInformation(
 				$"GetPdfsInDirectory - No PDF files matching the pattern '{_searchPattern}' were found in the current directory.");
 			return [];
 		}
@@ -41,11 +44,11 @@ internal class PdfProcessor : IPdfProcessor
 
 	public async Task<List<string>> ProcessPdfsInDirectory(List<string> resultPdfs, string directory)
 	{
-		Console.WriteLine($"ProcessPdfsInDirectory - Current directory: {directory}");
+		_logger.LogInformation($"ProcessPdfsInDirectory - Current directory: {directory}");
 
 		if (!resultPdfs.Any())
 		{
-			Console.WriteLine(
+			_logger.LogInformation(
 				"No PDF files provided.");
 			return new List<string>();
 		}
@@ -54,7 +57,7 @@ internal class PdfProcessor : IPdfProcessor
 
 		foreach (var pdfFile in resultPdfs)
 		{
-			Console.WriteLine($"Found PDF file: {pdfFile}");
+			_logger.LogInformation($"Found PDF file: {pdfFile}");
 			var pdfBytes = await _fileSystem.ReadAllBytesAsync(pdfFile);
 			createdFiles.AddRange(await ProcessPdfFileAsync(pdfFile, pdfBytes));
 		}
@@ -66,7 +69,7 @@ internal class PdfProcessor : IPdfProcessor
 	{
 		var imageCounter = 1;
 		var pdfFileName = _fileSystem.GetFileNameWithoutExtension(pdfFilePath);
-		Console.WriteLine($"Processing PDF file: {pdfFilePath}");
+		_logger.LogInformation($"Processing PDF file: {pdfFilePath}");
 
 		var createdFiles = new List<string>();
 
@@ -82,7 +85,7 @@ internal class PdfProcessor : IPdfProcessor
 				_fileSystem.CombinePaths(_fileSystem.GetDirectoryName(pdfFilePath), imageFileName);
 
 			_imageSaver.SaveImage(img, imageFilePath);
-			Console.WriteLine($"Saved image: {imageFileName}");
+			_logger.LogInformation($"Saved image: {imageFileName}");
 
 			createdFiles.Add(imageFilePath);
 			imageCounter++;

@@ -1,13 +1,9 @@
-using System.ComponentModel.DataAnnotations;
 using System.Drawing;
 using System.Globalization;
 using System.Text.RegularExpressions;
-using FuzzySharp;
-using Microsoft.Extensions.Configuration;
-using Microsoft.ML;
-using Microsoft.ML.Data;
-using Microsoft.ML.Transforms;
-using PdfImagesExtractToDiscord.Extension;
+using Microsoft.Extensions.Logging;
+using PdfImagesExtractToDiscord.Extractor.Providers;
+using PdfImagesExtractToDiscord.Extractor.Validator;
 using PdfImagesExtractToDiscord.Interface;
 using PdfImagesExtractToDiscord.Model;
 using Tesseract;
@@ -15,16 +11,19 @@ using ImageFormat = System.Drawing.Imaging.ImageFormat;
 
 namespace PdfImagesExtractToDiscord.Extractor;
 
-public class ImageTextExtractor : IImageTextExtractor
+public partial class ImageTextExtractor : IImageTextExtractor
 {
-	private MLContext _mlContext;
-	private TransformerChain<KeyToValueMappingTransformer>? _mlModel;
-	public required IEnumerable<string> PossiblePairsList;
+	private readonly IMlPredictionService _mlPredictionService;
+	private readonly IFuzzyMatchService _fuzzyMatchService;
+	private readonly ICurrencyPairValidator _currencyPairValidator;
+	private readonly ILogger<ImageTextExtractor> _logger;
 
-	public ImageTextExtractor(IConfiguration configuration)
+	public ImageTextExtractor(ILogger<ImageTextExtractor> logger, IMlPredictionService mlPredictionService, IFuzzyMatchService fuzzyMatchService, ICurrencyPairValidator currencyPairValidator)
 	{
-		InitMlModel();
-		PossiblePairsList = configuration.GetSection("PossiblePairs").Get<List<string>>().EmptyWhenNull();
+		_mlPredictionService = mlPredictionService;
+		_fuzzyMatchService = fuzzyMatchService;
+		_currencyPairValidator = currencyPairValidator;
+		_logger = logger;
 	}
 
 	public ImageDetailsModel GetImageDetails(FileStream fileStream)
@@ -51,7 +50,7 @@ public class ImageTextExtractor : IImageTextExtractor
 						using (var page = engine.Process(pix))
 						{
 							var text = page.GetText().Trim();
-							Console.WriteLine($"OCR Text: {text}"); // For debugging
+							_logger.LogInformation($"OCR Text: {text}"); // For debugging
 
 							var nonEmptyTrimmedLongLines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries)
 								.Select(line => line?.Trim())
@@ -65,15 +64,15 @@ public class ImageTextExtractor : IImageTextExtractor
 							var currencyPairLine = nonEmptyTrimmedLongLines.LastOrDefault();
 
 							// Extract currency pair using ML.NET / Fuzzy
-							Console.WriteLine($"Currency pair line: {currencyPairLine}");
+							_logger.LogInformation($"Currency pair line: {currencyPairLine}");
 							var symbolName = ExtractCurrencyPair(currencyPairLine);
-							Console.WriteLine($"Extracted symbol name: {symbolName}");
+							_logger.LogInformation($"Extracted symbol name: {symbolName}");
 
 							// Extract interval
 							var intervalMatch = Regex.Match(currencyPairLine, @"(\d*[HDWMhdwm])", RegexOptions.IgnoreCase);
 							var interval = intervalMatch.Success ? intervalMatch.Groups[1].Value : "Unknown";
 
-							Console.WriteLine($"{currencyPairLine} - {symbolName}: {interval}");
+							_logger.LogInformation($"{currencyPairLine} - {symbolName}: {interval}");
 
 							return new ImageDetailsModel
 							{
@@ -88,30 +87,62 @@ public class ImageTextExtractor : IImageTextExtractor
 		}
 	}
 
-	private void InitMlModel()
+	public string ExtractCurrencyPair(string text)
 	{
-		_mlContext = new MLContext();
-
-		var data = new List<CurrencyData>
+		if (string.IsNullOrWhiteSpace(text))
 		{
-			new() { Text = "U.S. Dollar", CurrencyCode = "USD" },
-			new() { Text = "Japanese Yen", CurrencyCode = "JPY" },
-			new() { Text = "Swiss Franc", CurrencyCode = "CHF" },
-			new() { Text = "Canadian Dollar", CurrencyCode = "CAD" },
-			new() { Text = "British Pound", CurrencyCode = "GBP" },
-			new() { Text = "Euro", CurrencyCode = "EUR" },
-			new() { Text = "Australian Dollar", CurrencyCode = "AUD" },
-			new() { Text = "Gold Spot", CurrencyCode = "XAU" }
+			_logger.LogInformation("Input text is empty or null");
+			return "Unknown";
+		}
+
+		var words = text.Split(' ');
+        
+		// Try extraction methods in order of reliability
+		var extractionMethods = new List<Func<string[], ExtractionResult>>
+		{
+			TryExtractWithML,
+			TryExtractWithFuzzyMatch
 		};
 
-		var trainData = _mlContext.Data.LoadFromEnumerable(data);
-		var pipeline = _mlContext.Transforms.Text
-			.FeaturizeText("Features", nameof(CurrencyData.Text))
-			.Append(_mlContext.Transforms.Conversion.MapValueToKey("Label", nameof(CurrencyData.CurrencyCode)))
-			.Append(_mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy())
-			.Append(_mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
+		foreach (var method in extractionMethods)
+		{
+			var result = method(words);
+			if (result.IsSuccessful)
+			{
+				return result.CurrencyPair;
+			}
+		}
 
-		_mlModel = pipeline.Fit(trainData);
+		return "Unknown";
+	}
+	
+	
+	private ExtractionResult TryExtractWithML(string[] words)
+	{
+		var currencyPair = _mlPredictionService.GetCurrencyPair(words);
+		return ValidateExtractionResult(currencyPair, "ML");
+	}
+
+	private ExtractionResult TryExtractWithFuzzyMatch(string[] words)
+	{
+		var currencyPair = _fuzzyMatchService.GetCurrencyPair(words);
+		return ValidateExtractionResult(currencyPair, "Fuzzy Match");
+	}
+	
+	private ExtractionResult ValidateExtractionResult(string currencyPair, string method)
+	{
+		if (string.IsNullOrEmpty(currencyPair))
+			return ExtractionResult.Failure();
+
+		var isValid = _currencyPairValidator.IsValidCurrencyPair(currencyPair);
+		if (isValid)
+		{
+			_logger.LogInformation($"Result brought by {method} is validated.");
+			return ExtractionResult.Success(currencyPair);
+		}
+        
+		_logger.LogInformation($"Result of {method} {currencyPair} invalidated.");
+		return ExtractionResult.Failure();
 	}
 
 	private static string ExtractDateFromText(string text)
@@ -134,143 +165,5 @@ public class ImageTextExtractor : IImageTextExtractor
 		}
 
 		return "Unknown";
-	}
-
-	private string ExtractCurrencyPair(string text)
-	{
-		if (string.IsNullOrWhiteSpace(text))
-		{
-			Console.WriteLine("Input text is empty or null");
-			return "Unknown";
-		}
-		var words = text.Split(' ');
-		var mlResult = GetCurrencyPairWithMl(words);
-
-		if (ValidateOrReturn(mlResult, "ML", out string ml)) return ml;
-
-		var fuzzyMatch = GetByFuzzyMatch(words);
-		if (ValidateOrReturn(fuzzyMatch, "fuzzyMatch", out string fm)) return fm;
-
-		return "Unknown";
-	}
-
-	private bool ValidateOrReturn(string result, string method, out string validated)
-	{
-		validated = result;
-		if (!string.IsNullOrEmpty(result))
-		{
-			if (PossiblePairsList.Any())
-			{
-				if (PossiblePairsList.Contains(result))
-				{
-					Console.WriteLine($"Result brought by {method} is validated.");
-					return true;
-				}
-				Console.WriteLine($"Result of {method} {result} invalidated.");
-				return false;
-			}
-
-			Console.WriteLine($"Result brought by {method} without validation.");
-			return true;
-		}
-
-		return false;
-	}
-
-	private static string GetByFuzzyMatch(string[] words)
-	{
-		List<string> currencies = new List<string>();
-		// Fallback
-		for (var i = 0; i < words.Length - 1; i++)
-		{
-			string wordPair;
-			if (i + 1 < words.Length)
-				wordPair = $"{words[i]} {words[i + 1]}";
-			else
-				wordPair = words[i];
-			var currencyCode = GetCurrencyCodeWithFuzzy(wordPair);
-			if (!string.IsNullOrEmpty(currencyCode))
-			{
-				currencies.Add(currencyCode);
-				i++;
-			}
-		}
-
-		if (currencies.Count >= 2)
-		{
-			Console.WriteLine("Result brought by Fuzzy.");
-			return $"{currencies[0]}/{currencies[1]}";
-		}
-
-		return null;
-	}
-
-	private string GetCurrencyPairWithMl(string[] words)
-	{
-		List<string> currencies = new List<string>();
-		var predictionEngine = _mlContext.Model.CreatePredictionEngine<CurrencyData, CurrencyPrediction>(_mlModel);
-		currencies = new List<string>();
-
-		for (var i = 0; i < words.Length - 1; i += 2)
-		{
-			string wordPair;
-			if (i + 1 < words.Length)
-				wordPair = $"{words[i]} {words[i + 1]}";
-			else
-				wordPair = words[i];
-
-			var prediction = predictionEngine.Predict(new CurrencyData { Text = wordPair });
-			if (!string.IsNullOrEmpty(prediction.PredictedLabel)) 
-				currencies.Add(prediction.PredictedLabel);
-		}
-
-		if (currencies.Count >= 2)
-		{
-			Console.WriteLine("Result brought by ML.");
-			return $"{currencies[0]}/{currencies[1]}";
-		}
-
-		return null;
-	}
-
-	private static string GetCurrencyCodeWithFuzzy(string currencyName)
-	{
-		var currencyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-		{
-			{ "U.S. Dollar", "USD" },
-			{ "Japanese Yen", "JPY" },
-			{ "Swiss Franc", "CHF" },
-			{ "Canadian Dollar", "CAD" },
-			{ "British Pound", "GBP" },
-			{ "Euro", "EUR" },
-			{ "Australian Dollar", "AUD" },
-			{ "Gold spot", "XAU" }
-		};
-
-		string bestMatch = null;
-		var bestScore = 0;
-
-		foreach (var kvp in currencyMap)
-		{
-			var score = Fuzz.Ratio(currencyName, kvp.Key);
-			if (score > bestScore)
-			{
-				bestScore = score;
-				bestMatch = kvp.Value;
-			}
-		}
-
-		return bestScore > 70 ? bestMatch : string.Empty; // Adjust threshold as needed
-	}
-
-	private class CurrencyData
-	{
-		public string Text { get; set; }
-		public string CurrencyCode { get; set; }
-	}
-
-	private class CurrencyPrediction
-	{
-		[ColumnName("PredictedLabel")] public string PredictedLabel { get; set; }
 	}
 }

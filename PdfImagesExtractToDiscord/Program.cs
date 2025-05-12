@@ -1,7 +1,11 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PdfImagesExtractToDiscord.Extractor;
+using PdfImagesExtractToDiscord.Extractor.Providers;
+using PdfImagesExtractToDiscord.Extractor.Validator;
 using PdfImagesExtractToDiscord.FileHandler;
 using PdfImagesExtractToDiscord.Interface;
 using PdfImagesExtractToDiscord.Model;
@@ -24,9 +28,10 @@ internal class Program
 			).ToList();
 
 		var fileSystem = host.Services.GetRequiredService<IFileSystem>();
+		var _logger = host.Services.GetRequiredService<ILogger>();
 		fileSystem.Clean(fileFeedToProcessModel);
 
-		Console.WriteLine("Finished work, press any key to exit.");
+		_logger.LogInformation("Finished work, press any key to exit.");
 		Console.ReadLine();
 	}
 
@@ -42,6 +47,8 @@ internal class Program
 			})
 			.ConfigureServices((hostContext, services) =>
 			{
+				services.Configure<CurrencyPairOptions>(hostContext.Configuration.GetSection("PossiblePairs"));
+
 				services.AddSingleton(hostContext.Configuration);
 				services.AddScoped<IImageTextExtractor, ImageTextExtractor>();
 				services.AddScoped<IDiscordSender, DiscordSender>();
@@ -49,6 +56,18 @@ internal class Program
 				services.AddScoped<IImageSaver, ImageSaver>();
 				services.AddScoped<IPdfProcessor, PdfProcessor>();
 				services.AddScoped<IPngProcessor, PngProcessor>();
+				services.AddSingleton<IMlPredictionService, MlPredictionService>();
+				services.AddSingleton<IFuzzyMatchService, FuzzyMatchService>();
+				services.AddSingleton<ICurrencyPairValidator>(provider => 
+				{
+					var options = provider.GetRequiredService<IOptions<CurrencyPairOptions>>();
+					return new CurrencyPairValidator(options.Value.PossiblePairs);
+				});
+				services.AddLogging(configure => 
+				{
+					configure.AddConsole();
+					configure.AddDebug();
+				});
 			});
 	}
 
@@ -64,5 +83,10 @@ internal class Program
 		result.PdfsRelatedPngsList =
 			await pdfProcessor.ProcessPdfsInDirectory(result.Pdfs, Directory.GetCurrentDirectory());
 		return result;
+	}
+	
+	public class CurrencyPairOptions
+	{
+		public List<string> PossiblePairs { get; set; } = new List<string>();
 	}
 }

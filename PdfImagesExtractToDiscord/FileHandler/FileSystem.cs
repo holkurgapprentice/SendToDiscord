@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PdfImagesExtractToDiscord.Extension;
 using PdfImagesExtractToDiscord.Interface;
 using PdfImagesExtractToDiscord.Model;
@@ -6,6 +7,12 @@ namespace PdfImagesExtractToDiscord.FileHandler;
 
 internal class FileSystem : IFileSystem
 {
+	private readonly ILogger<FileSystem> _logger;
+
+	public FileSystem(ILogger<FileSystem> logger)
+	{
+		_logger = logger;
+	}
 	public string[] GetFiles(string path, string fileNamePattern)
 	{
 		return Directory.GetFiles(path, fileNamePattern);
@@ -46,9 +53,9 @@ internal class FileSystem : IFileSystem
 			CleanOnFail(fileFeedToProcessModel);
 	}
 
-	private static void CleanOnSuccess(FileFeedToProcessModel fileFeedToProcessModel)
+	private void CleanOnSuccess(FileFeedToProcessModel fileFeedToProcessModel)
 	{
-		Console.WriteLine("Cleaning all files");
+		_logger.LogInformation("Cleaning all files");
 
 		var allFiles = fileFeedToProcessModel.Pdfs.EmptyWhenNull().Concat(
 			fileFeedToProcessModel.ProcessedPdfsRelatedPngsList.EmptyWhenNull()).Concat(
@@ -57,28 +64,28 @@ internal class FileSystem : IFileSystem
 		foreach (var filePath in allFiles)
 			try
 			{
-				Console.WriteLine($"Cleaning file {filePath}");
+				_logger.LogInformation($"Cleaning file {filePath}");
 				File.Delete(filePath);
 			}
 			catch (Exception e)
 			{
-				Console.WriteLine($"Failed to delete file {filePath}: {e.Message}");
+				_logger.LogInformation($"Failed to delete file {filePath}: {e.Message}");
 			}
 	}
 
-	private static void CleanOnFail(FileFeedToProcessModel fileFeedToProcessModel)
+	private void CleanOnFail(FileFeedToProcessModel fileFeedToProcessModel)
 	{
 		foreach (var temporaryFile in fileFeedToProcessModel.PdfsRelatedPngsList.EmptyWhenNull().Where(
 			         pdfRelatedPngPath =>
 				         !fileFeedToProcessModel.ProcessedPdfsRelatedPngsList.Contains(pdfRelatedPngPath)))
 			try
 			{
-				Console.WriteLine($"Cleaning temporary file {temporaryFile}");
+				_logger.LogInformation($"Cleaning temporary file {temporaryFile}");
 				File.Delete(temporaryFile);
 			}
 			catch (Exception e)
 			{
-				Console.WriteLine($"Failed to delete temporary file {temporaryFile}: {e.Message}");
+				_logger.LogInformation($"Failed to delete temporary file {temporaryFile}: {e.Message}");
 			}
 	}
 }
