@@ -69,8 +69,7 @@ public partial class ImageTextExtractor : IImageTextExtractor
 							_logger.LogInformation($"Extracted symbol name: {symbolName}");
 
 							// Extract interval
-							var intervalMatch = Regex.Match(currencyPairLine, @"(\d*[HDWMhdwm])", RegexOptions.IgnoreCase);
-							var interval = intervalMatch.Success ? intervalMatch.Groups[1].Value : "Unknown";
+							var interval = ExtractInterval(currencyPairLine);
 
 							_logger.LogInformation($"{currencyPairLine} - {symbolName}: {interval}");
 
@@ -85,6 +84,26 @@ public partial class ImageTextExtractor : IImageTextExtractor
 				}
 			}
 		}
+	}
+
+	private static string ExtractInterval(string currencyPairLine)
+	{
+		var intervalMatch = Regex.Match(currencyPairLine, @"(\d+\s*[HDWMhdwm]|[HDWMhdwm])", RegexOptions.IgnoreCase);
+		if (!intervalMatch.Success) 
+			return "Unknown";
+
+		string matchedText = intervalMatch.Groups[1].Value.Trim();
+		char intervalChar = char.ToUpper(matchedText[matchedText.Length - 1]);
+    
+		// Extract digit or default to 1
+		string digitPart = "";
+		for (int i = 0; i < matchedText.Length - 1; i++)
+		{
+			if (char.IsDigit(matchedText[i]))
+				digitPart += matchedText[i];
+		}
+    
+		return (string.IsNullOrEmpty(digitPart) ? "1" : digitPart) + intervalChar;
 	}
 
 	public string ExtractCurrencyPair(string text)
@@ -115,8 +134,7 @@ public partial class ImageTextExtractor : IImageTextExtractor
 
 		return "Unknown";
 	}
-	
-	
+
 	private ExtractionResult TryExtractWithML(string[] words)
 	{
 		var currencyPair = _mlPredictionService.GetCurrencyPair(words);
