@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PdfImagesExtractToDiscord.Extractor;
 using PdfImagesExtractToDiscord.Extractor.Providers;
@@ -11,6 +10,8 @@ using PdfImagesExtractToDiscord.Interface;
 using PdfImagesExtractToDiscord.Model;
 using PdfImagesExtractToDiscord.Processor;
 using PdfImagesExtractToDiscord.Sender;
+using Serilog;
+using Serilog.Events;
 
 namespace PdfImagesExtractToDiscord;
 
@@ -18,21 +19,43 @@ internal class Program
 {
 	private static async Task Main(string[] args)
 	{
-		var host = CreateHostBuilder(args).Build();
+		// Configure Serilog first
+		Log.Logger = new LoggerConfiguration()
+			.MinimumLevel.Debug()
+			.MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+			.Enrich.FromLogContext()
+			.WriteTo.Console()
+			.WriteTo.File(
+				path: "logs/app-.log",
+				rollingInterval: RollingInterval.Day,
+				outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+			.CreateLogger();
+		try
+		{
+			var host = CreateHostBuilder(args).Build();
 
-		var fileFeedToProcessModel = await GetPngsToProcess(host);
-		var discordSender = host.Services.GetRequiredService<IDiscordSender>();
+			Log.Information("Starting application");
+			var fileFeedToProcessModel = await GetPngsToProcess(host);
+			var discordSender = host.Services.GetRequiredService<IDiscordSender>();
 
-		fileFeedToProcessModel.ProcessedPdfsRelatedPngsList = (await discordSender
-				.PostAsync(fileFeedToProcessModel)
-			).ToList();
+			fileFeedToProcessModel.ProcessedPdfsRelatedPngsList = (await discordSender
+					.PostAsync(fileFeedToProcessModel)
+				).ToList();
 
-		var fileSystem = host.Services.GetRequiredService<IFileSystem>();
-		var _logger = host.Services.GetRequiredService<ILogger>();
-		fileSystem.Clean(fileFeedToProcessModel);
+			var fileSystem = host.Services.GetRequiredService<IFileSystem>();
+			fileSystem.Clean(fileFeedToProcessModel);
 
-		_logger.LogInformation("Finished work, press any key to exit.");
-		Console.ReadLine();
+			Log.Information("Finished work, press any key to exit");
+			Console.ReadLine();
+		}
+		catch (Exception ex)
+		{
+			Log.Fatal(ex, "Application terminated unexpectedly");
+		}
+		finally
+		{
+			Log.CloseAndFlush();
+		}
 	}
 
 	private static IHostBuilder CreateHostBuilder(string[] args)
@@ -48,7 +71,8 @@ internal class Program
 			.ConfigureServices((hostContext, services) =>
 			{
 				services.Configure<CurrencyPairOptions>(hostContext.Configuration.GetSection("PossiblePairs"));
-
+				services.AddLogging(loggingBuilder =>
+					loggingBuilder.AddSerilog(dispose: true));
 				services.AddSingleton(hostContext.Configuration);
 				services.AddScoped<IImageTextExtractor, ImageTextExtractor>();
 				services.AddScoped<IDiscordSender, DiscordSender>();
@@ -58,15 +82,10 @@ internal class Program
 				services.AddScoped<IPngProcessor, PngProcessor>();
 				services.AddSingleton<IMlPredictionService, MlPredictionService>();
 				services.AddSingleton<IFuzzyMatchService, FuzzyMatchService>();
-				services.AddSingleton<ICurrencyPairValidator>(provider => 
+				services.AddSingleton<ICurrencyPairValidator>(provider =>
 				{
 					var options = provider.GetRequiredService<IOptions<CurrencyPairOptions>>();
 					return new CurrencyPairValidator(options.Value.PossiblePairs);
-				});
-				services.AddLogging(configure => 
-				{
-					configure.AddConsole();
-					configure.AddDebug();
 				});
 			});
 	}
@@ -84,7 +103,7 @@ internal class Program
 			await pdfProcessor.ProcessPdfsInDirectory(result.Pdfs, Directory.GetCurrentDirectory());
 		return result;
 	}
-	
+
 	public class CurrencyPairOptions
 	{
 		public List<string> PossiblePairs { get; set; } = new List<string>();

@@ -11,14 +11,15 @@ using ImageFormat = System.Drawing.Imaging.ImageFormat;
 
 namespace PdfImagesExtractToDiscord.Extractor;
 
-public partial class ImageTextExtractor : IImageTextExtractor
+public class ImageTextExtractor : IImageTextExtractor
 {
 	private readonly IMlPredictionService _mlPredictionService;
 	private readonly IFuzzyMatchService _fuzzyMatchService;
 	private readonly ICurrencyPairValidator _currencyPairValidator;
 	private readonly ILogger<ImageTextExtractor> _logger;
 
-	public ImageTextExtractor(ILogger<ImageTextExtractor> logger, IMlPredictionService mlPredictionService, IFuzzyMatchService fuzzyMatchService, ICurrencyPairValidator currencyPairValidator)
+	public ImageTextExtractor(ILogger<ImageTextExtractor> logger, IMlPredictionService mlPredictionService,
+		IFuzzyMatchService fuzzyMatchService, ICurrencyPairValidator currencyPairValidator)
 	{
 		_mlPredictionService = mlPredictionService;
 		_fuzzyMatchService = fuzzyMatchService;
@@ -88,22 +89,27 @@ public partial class ImageTextExtractor : IImageTextExtractor
 
 	private static string ExtractInterval(string currencyPairLine)
 	{
-		var intervalMatch = Regex.Match(currencyPairLine, @"(\d+\s*[HDWMhdwm]|[HDWMhdwm])", RegexOptions.IgnoreCase);
-		if (!intervalMatch.Success) 
-			return "Unknown";
+		string pattern = @"\b(?:(\d*)\s*([HDWMhdwm]))\b";
+		var intervalMatch = Regex.Match(currencyPairLine, pattern, RegexOptions.IgnoreCase);
 
-		string matchedText = intervalMatch.Groups[1].Value.Trim();
-		char intervalChar = char.ToUpper(matchedText[matchedText.Length - 1]);
-    
-		// Extract digit or default to 1
-		string digitPart = "";
-		for (int i = 0; i < matchedText.Length - 1; i++)
+		if (!intervalMatch.Success)
+			return "Unknown"; // No valid interval found
+
+		// Group 1 captured the digits (or is empty if no digits were present, e.g., "M").
+		string digitPart = intervalMatch.Groups[1].Value;
+		// Group 2 captured the interval letter.
+		string letterPart = intervalMatch.Groups[2].Value;
+
+		// If no digits were explicitly captured (e.g., input was "M" meaning "1M"), default digitPart to "1".
+		if (string.IsNullOrEmpty(digitPart))
 		{
-			if (char.IsDigit(matchedText[i]))
-				digitPart += matchedText[i];
+			digitPart = "1";
 		}
-    
-		return (string.IsNullOrEmpty(digitPart) ? "1" : digitPart) + intervalChar;
+
+		// Convert the interval letter to uppercase.
+		char intervalChar = char.ToUpper(letterPart[0]);
+
+		return digitPart + intervalChar;
 	}
 
 	public string ExtractCurrencyPair(string text)
@@ -115,7 +121,7 @@ public partial class ImageTextExtractor : IImageTextExtractor
 		}
 
 		var words = text.Split(' ');
-        
+
 		// Try extraction methods in order of reliability
 		var extractionMethods = new List<Func<string[], ExtractionResult>>
 		{
@@ -146,7 +152,7 @@ public partial class ImageTextExtractor : IImageTextExtractor
 		var currencyPair = _fuzzyMatchService.GetCurrencyPair(words);
 		return ValidateExtractionResult(currencyPair, "Fuzzy Match");
 	}
-	
+
 	private ExtractionResult ValidateExtractionResult(string currencyPair, string method)
 	{
 		if (string.IsNullOrEmpty(currencyPair))
@@ -158,7 +164,7 @@ public partial class ImageTextExtractor : IImageTextExtractor
 			_logger.LogInformation($"Result brought by {method} is validated.");
 			return ExtractionResult.Success(currencyPair);
 		}
-        
+
 		_logger.LogInformation($"Result of {method} {currencyPair} invalidated.");
 		return ExtractionResult.Failure();
 	}
